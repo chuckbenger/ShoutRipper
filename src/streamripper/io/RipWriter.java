@@ -23,6 +23,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import streamripper.utils.RipPlayer;
 
 /**
  *
@@ -33,11 +34,13 @@ public class RipWriter {
 
     private BufferedOutputStream out;
     private String directory;
+    private int totalBytes;
+    private RipPlayer ripPlayer;
   
     public RipWriter(String directory){
         try {
             this.directory = directory;
-            out = new BufferedOutputStream(new FileOutputStream(directory));
+            out = new BufferedOutputStream(new FileOutputStream(this.directory));
         } catch (FileNotFoundException ex) {
             Logger.getLogger(RipWriter.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -47,6 +50,19 @@ public class RipWriter {
     public void write(byte [] data,int offset,int length){
         try {
             out.write(data,offset,length);
+            totalBytes += length;
+
+            if(ripPlayer == null & totalBytes >= 10860){
+               ripPlayer = new RipPlayer(directory);
+               ripPlayer.play();
+            }else if(ripPlayer != null){
+
+                if(ripPlayer.isComplete()){
+                    ripPlayer.close();
+                    ripPlayer = null;
+                    totalBytes = 0;
+                }
+            }
         } catch (IOException ex) {
             Logger.getLogger(RipWriter.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -56,6 +72,7 @@ public class RipWriter {
         try {
            
             out.close();
+            
         } catch (IOException ex) {
             Logger.getLogger(RipWriter.class.getName()).log(Level.SEVERE, null, ex);
         }

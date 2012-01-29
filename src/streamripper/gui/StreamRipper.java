@@ -21,8 +21,10 @@ package streamripper.gui;
 
 //~--- non-JDK imports --------------------------------------------------------
 
-import java.io.IOException;
+import streamripper.io.MetaData;
+import streamripper.io.MetaDataListener;
 import streamripper.io.RipReader;
+import streamripper.io.StationInfo;
 
 //~--- JDK imports ------------------------------------------------------------
 
@@ -37,6 +39,8 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 
+import java.io.IOException;
+
 import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -45,7 +49,6 @@ import javax.swing.JOptionPane;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 import javax.swing.event.MouseInputAdapter;
-import streamripper.io.StationInfo;
 
 /**
  * This class provides a graphical interface
@@ -60,6 +63,7 @@ public class StreamRipper implements ActionListener, MetaDataListener {
     private PopupMenu            popupMenu;                   // Popup menu for interaction
     private ArrayList<RipReader> readers;                     // Arraylist containing currently running readers
     private SelectionPopup       selectionPopup;              // Stream selection popup menu
+    private SongInfo             songInfo;                    // Used to display song information
     private MenuItem             startAllMenuItem;            // Start all downloads menu item
     private MenuItem             stopAllMenuItem;             // Stop all downloads menu item
     private SystemTray           tray;                        // System try interaction
@@ -79,7 +83,8 @@ public class StreamRipper implements ActionListener, MetaDataListener {
                 trayIcon.setImageAutoSize(true);
                 tray.add(trayIcon);
                 selectionPopup = new SelectionPopup(this);
-                readers = new ArrayList<RipReader>();
+                readers        = new ArrayList<RipReader>();
+                songInfo       = new SongInfo();
                 initListeners();
             } catch (AWTException ex) {}
         } else {
@@ -164,9 +169,9 @@ public class StreamRipper implements ActionListener, MetaDataListener {
      * @param stationInfo holds information on the stream
      * @throws IOException
      */
-    public void addStreamDownload(StationInfo stationInfo) throws IOException{
+    public void addStreamDownload(StationInfo stationInfo) throws IOException {
+        RipReader ripReader = new RipReader(stationInfo, "c:\\", true);
 
-        RipReader ripReader = new RipReader(stationInfo, "c:\\");
         ripReader.addMetaDataListener(this);
         readers.add(ripReader);
     }
@@ -176,9 +181,14 @@ public class StreamRipper implements ActionListener, MetaDataListener {
      * @param data the data received
      */
     public void MetaDataRecieved(MetaData data) {
+        if (data.getType() == MetaData.SONG_CHANGE) {
+            String[] info = data.getValue().split("-");
 
-        if(data.getType() == MetaData.SONG_CHANGE){
-            System.out.println(data.getValue());
+            if (info.length >= 2) {
+                songInfo.setSongInfo(info[0], info[1]);
+            } else {
+                songInfo.setSongInfo(info[0], "");
+            }
         }
     }
 }

@@ -21,9 +21,6 @@ package streamripper.gui;
 
 //~--- non-JDK imports --------------------------------------------------------
 
-import java.net.MalformedURLException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -31,10 +28,11 @@ import org.jsoup.select.Elements;
 
 import streamripper.io.StationInfo;
 
+import streamripper.utils.RipUtils;
+
 //~--- JDK imports ------------------------------------------------------------
 
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
@@ -45,6 +43,8 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 
 import java.io.IOException;
+
+import java.net.MalformedURLException;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -57,10 +57,10 @@ import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.table.DefaultTableModel;
-import streamripper.utils.RipUtils;
 
 /**
- *
+ * SearchFrame provides a class for searching for streams
+ * from Shoutcast dir list
  * @author cbenger
  */
 public final class SearchFrame extends JFrame implements ActionListener {
@@ -79,22 +79,28 @@ public final class SearchFrame extends JFrame implements ActionListener {
     private JPopupMenu             popupMenu;                        // Popup menu prompting what action to take
     private ArrayList<StationInfo> queryResults;                     // Results from a search
     private JTable                 resultsJTable;                    // Table for displays search results
+    private Dimension              screenSize;                       // Size of the screen
     private JTextField             searchJTextField;                 // Text field for searching for streams
-    private DefaultTableModel      tableModel;                       // Table model for manipulating a jtable
     private SelectionPopup         selectionPopup;                   // Reference to the selection popup
+    private DefaultTableModel      tableModel;                       // Table model for manipulating a jtable
 
+    /**
+     * Constructor for SearchFrame
+     * @param selectionPopup the pop-up menu to reference
+     */
     public SearchFrame(SelectionPopup selectionPopup) {
         super("Search");
         this.selectionPopup = selectionPopup;
         this.setLayout(new BorderLayout(0, 0));
         this.setSize(FRAME_WIDTH, FRAME_HEIGHT);
         this.setUndecorated(true);
-        this.initGui();
-
-        Dimension dimension = Toolkit.getDefaultToolkit().getScreenSize();
-
+        this.initGui();                // Initialize the gui
+        this.setupEventListeners();    // Sets up the event listeners
+        screenSize   = Toolkit.getDefaultToolkit().getScreenSize();
         queryResults = new ArrayList<StationInfo>();
-        this.setLocation(dimension.width - FRAME_WIDTH - 100, dimension.height - FRAME_HEIGHT - 50);
+        this.setLocation(screenSize.width - FRAME_WIDTH - 100, screenSize.height - FRAME_HEIGHT - 50);
+
+        // Adds a new event to hide the window when deactivated
         this.addWindowListener(new WindowAdapter() {
             @Override
             public void windowDeactivated(WindowEvent e) {
@@ -107,14 +113,13 @@ public final class SearchFrame extends JFrame implements ActionListener {
      * Initializes the gui components
      */
     private void initGui() {
+
+        // Creates gui components
         searchJTextField  = new JTextField();
         popupMenu         = new JPopupMenu();
         downloadJMenuItem = new JMenuItem("Download");
         playJMenuItem     = new JMenuItem("Play");
         bothJMenuItem     = new JMenuItem("Play & Download");
-        downloadJMenuItem.addActionListener(this);
-        playJMenuItem.addActionListener(this);
-        bothJMenuItem.addActionListener(this);
 
         // Create a new table model and disable user edits
         tableModel = new DefaultTableModel(COLUMN_NAMES, 0) {
@@ -124,7 +129,32 @@ public final class SearchFrame extends JFrame implements ActionListener {
             }
         };
         resultsJTable = new JTable(tableModel);
+
+        // Adjusts the width of the first column i.e. station name field
         resultsJTable.getColumnModel().getColumn(0).setPreferredWidth(150);
+
+        // Adds components to the popup menu
+        popupMenu.add(playJMenuItem);
+        popupMenu.add(downloadJMenuItem);
+        popupMenu.addSeparator();
+        popupMenu.add(bothJMenuItem);
+
+        // Creates a JScroll pane to contain the results table
+        JScrollPane pane = new JScrollPane(resultsJTable);
+
+        // Adds components to the Frame
+        add(searchJTextField, BorderLayout.NORTH);
+        add(pane, BorderLayout.CENTER);
+    }
+
+    /**
+     * Sets up the search frames event handlers
+     */
+    private void setupEventListeners() {
+        downloadJMenuItem.addActionListener(this);
+        playJMenuItem.addActionListener(this);
+        bothJMenuItem.addActionListener(this);
+        searchJTextField.addActionListener(this);
         resultsJTable.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -133,15 +163,6 @@ public final class SearchFrame extends JFrame implements ActionListener {
                 }
             }
         });
-        searchJTextField.addActionListener(this);
-        popupMenu.add(playJMenuItem);
-        popupMenu.add(downloadJMenuItem);
-        popupMenu.addSeparator();
-        popupMenu.add(bothJMenuItem);
-        add(searchJTextField, BorderLayout.NORTH);
-        JScrollPane pane = new JScrollPane(resultsJTable);
-        pane.setBackground(Color.black);
-        add(pane, BorderLayout.CENTER);
     }
 
     /**
@@ -154,30 +175,33 @@ public final class SearchFrame extends JFrame implements ActionListener {
         } else if (e.getSource() == playJMenuItem) {}
         else if (e.getSource() == downloadJMenuItem) {
 
-            String name = tableModel.getValueAt(resultsJTable.getSelectedRow(), 0).toString();
-            String genre = tableModel.getValueAt(resultsJTable.getSelectedRow(), 1).toString();
-            String listeners = tableModel.getValueAt(resultsJTable.getSelectedRow(), 2).toString();
-            String bitrate = tableModel.getValueAt(resultsJTable.getSelectedRow(), 3).toString();
-            String type = tableModel.getValueAt(resultsJTable.getSelectedRow(), 4).toString();
+            // Grabs an StationObject form of the selected row
+            StationInfo selectedStation = constructStationObject();
 
-            StationInfo selectedStation = new StationInfo(null, name, genre, listeners, bitrate, type);
+            // Loops through each query result finding the correlating station
+            for (StationInfo info : queryResults) {
 
-            for(StationInfo info : queryResults){
-
-                if(info.compareTo(selectedStation) == 0){
+                // Compares two station objects 0 == same
+                if (info.compareTo(selectedStation) == 0) {
                     try {
+
+                        // Parses the pls data for the station
                         RipUtils.parsePls(info);
+
+                        // Starts ripping the stream
                         selectionPopup.getRipper().addStreamDownload(info);
                     } catch (MalformedURLException ex) {
-                        JOptionPane.showMessageDialog(null, "Pls url was malformed","Error connecting to stream",JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(null, "Pls url was malformed", "Error connecting to stream",
+                                                      JOptionPane.ERROR_MESSAGE);
                     } catch (IOException ex) {
-                        JOptionPane.showMessageDialog(null, "Failed to connect to stream","Error connecting to stream",JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(null, "Failed to connect to stream",
+                                                      "Error connecting to stream", JOptionPane.ERROR_MESSAGE);
                     }
+
                     break;
                 }
             }
         }
-        else if (e.getSource() == bothJMenuItem) {}
     }
 
     /**
@@ -185,12 +209,17 @@ public final class SearchFrame extends JFrame implements ActionListener {
      */
     private void performQuery() {
         try {
-            queryResults.clear();                          // Clears the array list
 
+            // Clears the array list
+            queryResults.clear();
+
+            // Removes all rows from the table
             while (tableModel.getRowCount() > 0) {
                 tableModel.removeRow(tableModel.getRowCount() - 1);
             }
 
+            // Grabs all html from specifed link and constructs an iterator to loop
+            // through all stations found
             Document          doc      = Jsoup.connect(SEARCH_URL + searchJTextField.getText()).get();
             Iterator<Element> stations = doc.getElementsByClass(ROOT_NODE).iterator();
 
@@ -224,7 +253,19 @@ public final class SearchFrame extends JFrame implements ActionListener {
             ex.printStackTrace();
         }
     }
+
+    /**
+     * Constructs a StationInfo object out of the currently selected row
+     * @return returns a new StationInfo object
+     */
+    private StationInfo constructStationObject() {
+        String name      = tableModel.getValueAt(resultsJTable.getSelectedRow(), 0).toString();
+        String genre     = tableModel.getValueAt(resultsJTable.getSelectedRow(), 1).toString();
+        String listeners = tableModel.getValueAt(resultsJTable.getSelectedRow(), 2).toString();
+        String bitrate   = tableModel.getValueAt(resultsJTable.getSelectedRow(), 3).toString();
+        String type      = tableModel.getValueAt(resultsJTable.getSelectedRow(), 4).toString();
+
+        return new StationInfo(null, name, genre, listeners, bitrate, type);
+    }
 }
 
-
-//~ Formatted by Jindent --- http://www.jindent.com

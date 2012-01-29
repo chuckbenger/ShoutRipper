@@ -29,8 +29,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import javazoom.jl.player.Player;
-import streamripper.gui.MetaData;
-import streamripper.gui.MetaDataListener;
+
 
 /**
  * RipReader is used to read meta data and music data
@@ -53,15 +52,17 @@ public class RipReader implements Runnable {
     private RipWriter            writer;                              // Writer to output song data
     private MetaDataListener     metaDataListener;                    // Object to send callbacks to when meta is received
     private Player player;
+    private boolean play;
+    
     /**
      * Constructor for RipReader
      * @param url the url of the shoutcast server
      * @throws UnknownHostException specified host wasn't found
      * @throws IOException General IO error connecting to server
      */
-    public RipReader(StationInfo stationInfo, String destination) throws UnknownHostException, IOException {
+    public RipReader(StationInfo stationInfo, String destination,boolean play) throws UnknownHostException, IOException {
         this.stationInfo = stationInfo;
-
+        this.play = play;
         String[] split = stationInfo.getStationUrls().get(0).split(":");    // Splits the ip and port
 
         socket = new Socket(split[0], Integer.parseInt(split[1]));      // Connects to server
@@ -76,20 +77,25 @@ public class RipReader implements Runnable {
 
     /**
      * Sends a meta data request to the server
+     * @param host the address of the server
      */
     private void sendMetaDataRequest(String host) throws IOException {
         String httpReq = "GET / HTTP/1.1\r\n" + "Host: " + host + "\r\n" + "Connection: close\r\n"
                          + "icy-metadata: 1\r\n" + "transferMode.dlna.org: Streaming\n\r\n" + "HEAD / HTTP/1.1\r\n"
                          + "Host: " + host + "\r\n" + "User-Agent: StreamRipper\n\r\n";
 
+        //Writes the packet and flushes buffer
+        //and closes writer
         out.write(httpReq.getBytes());
         out.flush();
-        System.out.println("Send meta data request");
     }
 
+    /**
+     * Loop to read incoming data from server
+     */
     public void run() {
-        boolean firstRead = true;
-        int     offset    = 0;
+        boolean firstRead = true; //Whether the incoming data is the first read
+        int     offset    = 0; //Current offset into the buffer
 
         while (true) {
             try {
@@ -127,7 +133,7 @@ public class RipReader implements Runnable {
         if (counter >= metaint) {
             int position = read - (counter - metaint);
             int length   = buffer[position + 1] * 16;
-
+            
             if (length > 0) {
                 byte[] metadata = new byte[length];
 
@@ -140,30 +146,50 @@ public class RipReader implements Runnable {
                     String tempName = data.substring(start, data.indexOf(';') - 1);
 
                     if (!tempName.equals(currentSong)) {
+
                         currentSong = tempName;
 
+                        //Remove illegal characters from song name
+                        currentSong = currentSong.replaceAll("/", "-");
+                        currentSong = currentSong.replaceAll(":", "");
+                        currentSong = currentSong.replaceAll("\\*", "");
+                        currentSong = currentSong.replaceAll("\\?", "");
+                        currentSong = currentSong.replaceAll("\"","");
+                        currentSong = currentSong.replaceAll("<", "");
+                        currentSong = currentSong.replaceAll(">", "");
+                        currentSong = currentSong.replaceAll("|", "");
+
+                        //If this class has a metadatalistener notify object of song name change
                         if(metaDataListener != null){
                             metaDataListener.MetaDataRecieved(new MetaData(MetaData.SONG_CHANGE, currentSong));
                         }
-                        
+
+                        //If writer is open close it
                         if (writer != null) {
                             writer.close();
                         }
 
+                        //Creates a new writer for writing mp3 data to
                         writer = new RipWriter("c:/" + currentSong + ".mp3");
+                        
                     }
                 }
             }
 
+            //Sets the couter equal to the data in this read - the meta data
             counter = read - (position + length + 1);
 
+            //Write mp3 data to file
             if (writer != null) {
-                writer.write(buffer, 0, position - 1);
-                writer.write(buffer, position + length + 1, read - (position + length) - 1);
+               writer.write(buffer, 0, position);
+               writer.write(buffer, position + length + 1, read - (position + length) - 1);
             }
         } else {
+            //Write mp3 data to file
             if (writer != null) {
-                writer.write(buffer, 0, read);
+                byte []d = new byte[read];
+                System.arraycopy(buffer, 0, d, 0, d.length);
+                writer.write(d, 0, d.length);
             }
         }
     }
@@ -212,5 +238,3 @@ public class RipReader implements Runnable {
 
 }
 
-
-//~ Formatted by Jindent --- http://www.jindent.com
