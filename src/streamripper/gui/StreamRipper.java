@@ -22,7 +22,6 @@ package streamripper.gui;
 //~--- non-JDK imports --------------------------------------------------------
 
 import java.io.IOException;
-import java.net.UnknownHostException;
 import streamripper.io.RipReader;
 
 //~--- JDK imports ------------------------------------------------------------
@@ -37,7 +36,6 @@ import java.awt.TrayIcon;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
-import java.awt.event.MouseMotionAdapter;
 
 import java.util.ArrayList;
 import java.util.logging.Level;
@@ -54,7 +52,7 @@ import streamripper.io.StationInfo;
  * for downloading mp3 stream
  * @author cbenger
  */
-public class StreamRipper implements ActionListener {
+public class StreamRipper implements ActionListener, MetaDataListener {
     private final String         LOGO = "images/logo.gif";    // System tray logo
     private Menu                 downloadsMenu;               // Downloads menu
     private MenuItem             exitItem;                    // Exit menu item
@@ -161,9 +159,27 @@ public class StreamRipper implements ActionListener {
         else if (e.getSource() == optionsMenuItem) {}
     }
 
+    /**
+     * Starts downloading a specified stream
+     * @param stationInfo holds information on the stream
+     * @throws IOException
+     */
     public void addStreamDownload(StationInfo stationInfo) throws IOException{
 
-        readers.add(new RipReader(stationInfo, "c:\\"));
+        RipReader ripReader = new RipReader(stationInfo, "c:\\");
+        ripReader.addMetaDataListener(this);
+        readers.add(ripReader);
+    }
+
+    /**
+     * Method called when meta data is received
+     * @param data the data received
+     */
+    public void MetaDataRecieved(MetaData data) {
+
+        if(data.getType() == MetaData.SONG_CHANGE){
+            System.out.println(data.getValue());
+        }
     }
 }
 

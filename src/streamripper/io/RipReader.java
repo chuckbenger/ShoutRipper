@@ -28,6 +28,9 @@ import java.io.UnsupportedEncodingException;
 
 import java.net.Socket;
 import java.net.UnknownHostException;
+import javazoom.jl.player.Player;
+import streamripper.gui.MetaData;
+import streamripper.gui.MetaDataListener;
 
 /**
  * RipReader is used to read meta data and music data
@@ -48,7 +51,8 @@ public class RipReader implements Runnable {
     private String               streamName;                          // The name of the stream
     private String               type;                                // The type of the audio stream
     private RipWriter            writer;                              // Writer to output song data
-
+    private MetaDataListener     metaDataListener;                    // Object to send callbacks to when meta is received
+    private Player player;
     /**
      * Constructor for RipReader
      * @param url the url of the shoutcast server
@@ -63,6 +67,7 @@ public class RipReader implements Runnable {
         socket = new Socket(split[0], Integer.parseInt(split[1]));      // Connects to server
         in     = new BufferedInputStream(socket.getInputStream());      // Sets up the input stream
         out    = new BufferedOutputStream(socket.getOutputStream());    // Sets up the output stream
+     
         System.out.println("Connected to " + stationInfo.getName());
         sendMetaDataRequest(stationInfo.getStationUrls().get(0));
         buffer = new byte[MAX_BUFFER];
@@ -136,8 +141,11 @@ public class RipReader implements Runnable {
 
                     if (!tempName.equals(currentSong)) {
                         currentSong = tempName;
-                        System.out.println("Downloading => " + currentSong);
 
+                        if(metaDataListener != null){
+                            metaDataListener.MetaDataRecieved(new MetaData(MetaData.SONG_CHANGE, currentSong));
+                        }
+                        
                         if (writer != null) {
                             writer.close();
                         }
@@ -189,9 +197,19 @@ public class RipReader implements Runnable {
                 counter -= s.getBytes("UTF8").length + 2;
             }
         }
-
+        
         System.out.println("Station: " + streamName + "\nType: " + type);
     }
+
+    /**
+     * Adds a reference to an object implements MetaDataListner
+     * to send call backs to when meta data is received
+     * @param listener the object implementing MetaDataListener
+     */
+    public void addMetaDataListener(MetaDataListener listener){
+        this.metaDataListener = listener;
+    }
+
 }
 
 
