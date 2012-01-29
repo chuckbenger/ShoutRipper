@@ -32,16 +32,18 @@ public class RipWriter {
 
 
     private BufferedOutputStream out;
-
-    public RipWriter(String name){
+    private String directory;
+  
+    public RipWriter(String directory){
         try {
-            name = name.replaceAll("/" ,"");
-            out = new BufferedOutputStream(new FileOutputStream("c:/" + name + ".mp3"));
+            this.directory = directory;
+            out = new BufferedOutputStream(new FileOutputStream(directory));
         } catch (FileNotFoundException ex) {
             Logger.getLogger(RipWriter.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
 
+  
     public void write(byte [] data,int offset,int length){
         try {
             out.write(data,offset,length);
@@ -52,9 +54,12 @@ public class RipWriter {
 
     public void close(){
         try {
+           
             out.close();
         } catch (IOException ex) {
             Logger.getLogger(RipWriter.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
+
+    
 }

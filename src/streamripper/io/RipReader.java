@@ -44,10 +44,10 @@ public class RipReader implements Runnable {
     private int                  metaint;                             // Rate in which meta data is sent from server
     private BufferedOutputStream out;                                 // output stream
     private Socket               socket;                              // Socket to connect to a server
+    private StationInfo          stationInfo;                         // Information on current downloading stream
     private String               streamName;                          // The name of the stream
     private String               type;                                // The type of the audio stream
-    private RipWriter            writer;
-   
+    private RipWriter            writer;                              // Writer to output song data
 
     /**
      * Constructor for RipReader
@@ -55,14 +55,16 @@ public class RipReader implements Runnable {
      * @throws UnknownHostException specified host wasn't found
      * @throws IOException General IO error connecting to server
      */
-    public RipReader(String url) throws UnknownHostException, IOException {
-        String[] split = url.split(":");    // Splits the ip and port
+    public RipReader(StationInfo stationInfo, String destination) throws UnknownHostException, IOException {
+        this.stationInfo = stationInfo;
+
+        String[] split = stationInfo.getStationUrls().get(0).split(":");    // Splits the ip and port
 
         socket = new Socket(split[0], Integer.parseInt(split[1]));      // Connects to server
         in     = new BufferedInputStream(socket.getInputStream());      // Sets up the input stream
         out    = new BufferedOutputStream(socket.getOutputStream());    // Sets up the output stream
-        System.out.println("Connected to " + url);
-        sendMetaDataRequest(url);
+        System.out.println("Connected to " + stationInfo.getName());
+        sendMetaDataRequest(stationInfo.getStationUrls().get(0));
         buffer = new byte[MAX_BUFFER];
         new Thread(this).start();
     }
@@ -92,7 +94,7 @@ public class RipReader implements Runnable {
 
                 offset  += numRead;    // Increases the offset
                 counter += numRead;    // The total number of bytes read
-                
+
                 if (offset == buffer.length) {
 
                     // If this is the first read then read the stream information
@@ -117,7 +119,6 @@ public class RipReader implements Runnable {
      * @param read
      */
     private void handle(int read) throws IOException {
-        
         if (counter >= metaint) {
             int position = read - (counter - metaint);
             int length   = buffer[position + 1] * 16;
@@ -131,21 +132,31 @@ public class RipReader implements Runnable {
 
                 if (data.contains(SONG_NAME_FIELD)) {
                     int    start    = data.indexOf(SONG_NAME_FIELD) + SONG_NAME_FIELD.length() + 1;
-                    String tempName = data.substring(start, data.indexOf(';')-1);
+                    String tempName = data.substring(start, data.indexOf(';') - 1);
 
                     if (!tempName.equals(currentSong)) {
                         currentSong = tempName;
                         System.out.println("Downloading => " + currentSong);
-                        if(writer != null)
+
+                        if (writer != null) {
                             writer.close();
-                        writer = new RipWriter(currentSong);
+                        }
+
+                        writer = new RipWriter("c:/" + currentSong + ".mp3");
                     }
                 }
             }
+
             counter = read - (position + length + 1);
-        } else{
-            if(writer != null)
-             writer.write(buffer,0,read);
+
+            if (writer != null) {
+                writer.write(buffer, 0, position - 1);
+                writer.write(buffer, position + length + 1, read - (position + length) - 1);
+            }
+        } else {
+            if (writer != null) {
+                writer.write(buffer, 0, read);
+            }
         }
     }
 
@@ -159,7 +170,7 @@ public class RipReader implements Runnable {
         final String NAME     = "icy-name:";
         final String META_INT = "icy-metaint:";
         final String TYPE     = "content-type:";
-        final String BIT_RATE = "icy-br:192";
+        final String BIT_RATE = "icy-br:";
         int          start;
         String[]     splitData = data.split("\n");
 
